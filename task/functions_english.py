@@ -8,13 +8,13 @@ import soundfile as sf
 # Helpers
 # =========================
 
-def display_text(win, text):
+def display_text(win, kb, text):
     print(text)
     textstim = visual.TextStim(win, text)
     event.clearEvents(eventType = None)
     textstim.draw()
     win.flip()
-    event.waitKeys(keyList = ['space'])
+    kb.waitKeys(keyList = ['space'])
     win.flip()
 
 def rms(sig):
@@ -73,10 +73,3 @@ def active_stats(x, sr, frame_ms=10, hangover_ms=50, z=0.5, abs_floor=0.01):
 
 def save_wav(path, x, sr):
     sf.write(path, x, sr, subtype="PCM_16")
-
-def keypress_wait(valid=("space", "return")):
-    while True:
-        keys = event.waitKeys()
-        for k in keys:
-            if k in valid:
-                return k
