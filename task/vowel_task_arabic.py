@@ -4,9 +4,10 @@ import numpy as np
 import sounddevice as sd
 import soundfile as sf
 import pandas as pd
-from psychopy import visual, core, event, gui, sound, prefs
-prefs.hardware['audioLib'] = ['ptb']
+from psychopy import visual, core, event, gui, sound, prefs, monitors
 from functions_arabic import *
+from motu import *
+from psychopy.hardware import keyboard
 
 # =========================
 # Ask for participant ID
@@ -17,17 +18,18 @@ PID = input("Enter participant ID (e.g. 10X): ")
 # Config
 # =========================
 WORDS_CSV_PATH  = "arabic_words.csv"
-SAVE_DIR        = f"data/subj_{PID}/arabic"
-SAMPLE_RATE     = 44100
+SAVE_DIR        = f"../data/subj_{PID}/arabic"
+SAMPLE_RATE     = 48000
 CHANNELS        = 1
+MOTU_INDEX 	= 3
 
 # Duration thresholds for ACTIVE speech (not total recording length)
-MIN_DUR_SHORT_S = 0.090   # 90 ms
-MIN_DUR_LONG_S  = 0.200   # 200 ms
+MIN_DUR_SHORT_S = 0.12   # 120 ms
+MIN_DUR_LONG_S  = 0.22   # 200 ms
 
 # Recording window caps (enough time to speak; not used for pass/fail)
 MAX_REC_SHORT_S = 1.20
-MAX_REC_LONG_S  = 2.00
+MAX_REC_LONG_S  = 2.20
 
 # Volume threshold (RMS of active segment). Start modest; adjust after a pilot.
 MIN_ACTIVE_RMS  = 0.015
@@ -51,8 +53,24 @@ items = pd.read_csv(WORDS_CSV_PATH)
 items = items.sample(frac=1).reset_index(drop=True)
 
 # PsychoPy window & sounds
-win = visual.Window(fullscr=False, size=(1200, 800), units="pix", color=[-0.5, -0.5, -0.5])
+kb = keyboard.Keyboard() 
+win = visual.Window(
+    fullscr = True, 
+    size = [1920, 1200],
+    screen = -1, 
+    pos = (0, 0),
+    units = "pix", 
+    allowGUI = False,
+    winType = 'glfw',
+    color=[-0.5, -0.5, -0.5])
 red_dot = visual.Circle(win=win, radius=10, fillColor=[1, -1, -1], lineColor=None)
+
+# Microphone settings
+sd.default.device = (MOTU_INDEX, None)   # input only
+sd.default.samplerate = SAMPLE_RATE
+sd.default.channels = 1
+sd.default.dtype = 'float32'
+sd.check_input_settings(device= MOTU_INDEX, channels=1, samplerate=SAMPLE_RATE)
 
 # Log file
 stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -79,8 +97,8 @@ with open(log_path, "w", newline="", encoding="utf-8") as lf:
     ])
 
 # Instructions
-display_text(win, "Welcome to the Arabic pronunciation task\n\nPress SPACE to begin.")
-display_text(win, "In this task you will be asked to pronounce a series of Arabic words. English transliterations of Arabic of words will appear on the screen one at a time. Press space to begin your recording and say each word out loud. Try your best to speak clearly and sustain the vowel of the word, the recording will end automatically. Words with long vowels will require a longer recording than short vowels. The program will re-prompt if the response is too short or too quiet. \n \n This task will last approximately 15 minutes.")
+display_text(win, kb, "Welcome to the Arabic pronunciation task\n\nPress SPACE to begin.")
+display_text(win, kb, "In this task you will be asked to pronounce a series of Arabic words. English transliterations of Arabic of words will appear on the screen one at a time. Press space to begin your recording and say each word out loud when the red dot appears on the screen. Try your best to speak clearly and sustain the vowel of the word, the recording will end automatically. Words with long vowels will require a longer recording than short vowels. The program will re-prompt if the response is too short or too quiet. \n \n This task will last approximately 10 minutes.")
 
 # =========================
 # Trial loop
@@ -103,7 +121,7 @@ for index, item in items.iterrows():
 
     while retries < MAX_RETRIES_PER_ITEM and not passed:
         # Prompt
-        display_text(win, f"{word}\n\n")
+        display_text(win, kb, f"{word}\n\n")
 
         # Display dot
         red_dot.draw()
@@ -113,7 +131,7 @@ for index, item in items.iterrows():
         sd.default.samplerate = SAMPLE_RATE
         sd.default.channels = CHANNELS
         duration = max_rec
-        rec = sd.rec(int(duration * SAMPLE_RATE), dtype='float32')
+        rec = sd.rec(int(duration * SAMPLE_RATE), dtype='float32', blocking = True)
         sd.wait()
 
         # End recording
@@ -136,7 +154,7 @@ for index, item in items.iterrows():
         passed = (act_dur_s >= min_dur) and (act_rms >= MIN_ACTIVE_RMS)
 
         # Save WAV
-        wav_name = f"{PID}_{trial_idx:03d}_{word}_{vlen}_try{retries}.wav"
+        wav_name = f"{PID}_arabic_{trial_idx:03d}_{word}_{vowel}_{vlen}_try{retries}.wav"
         rec_path = os.path.join(SAVE_DIR, wav_name)
         save_wav(rec_path, x_trim, SAMPLE_RATE)
 
@@ -152,7 +170,7 @@ for index, item in items.iterrows():
             fb = f"Your recording was too {reason}, please try again."
             retries += 1
             print(f"retries: {retries}")
-            display_text(win, fb + "\n\n Press SPACE to retry.")
+            display_text(win, kb, fb + "\n\n Press SPACE to retry.")
 
 
     # Log
@@ -178,9 +196,7 @@ for index, item in items.iterrows():
         ])
 
 # Wrap up
-txt.text = "All done. Thank you!"
-sub.text = f"Data saved to: {os.path.abspath(SAVE_DIR)}\nLog file: {os.path.abspath(log_path)}\nPress any key to exit."
-txt.draw(); sub.draw(); win.flip()
-event.waitKeys()
+display_text(win, kb, "All done. Thank you! Press space one more time to exit the program. Your experimenter will be with you shortly.")
+print(f"Data saved to: {os.path.abspath(SAVE_DIR)}\nLog file: {os.path.abspath(log_path)}\nPress any key to exit.")
 win.close()
 core.quit()
